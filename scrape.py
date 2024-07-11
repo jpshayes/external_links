@@ -2,7 +2,6 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin
 import time
-import csv
 
 # Function to check if a URL is absolute
 def is_absolute(url):
@@ -23,16 +22,20 @@ def has_disallowed_path(url, disallowed_paths):
     path = urlparse(url).path
     return any(path.startswith(dp) for dp in disallowed_paths)
 
-# Function to scrape links from a specified tag and save them to a CSV file
+# Function to scrape links from a specified tag and save them to a text file
 def scrape_and_save_links(url, valid_domains, log_domains, output_file, disallowed_extensions, disallowed_paths, visited=set()):
+    # Normalize URL
+    parsed_url = urlparse(url)
+    normalized_url = parsed_url.scheme + "://" + parsed_url.netloc + parsed_url.path.rstrip('/')
+
     # If the URL has already been visited, skip it
-    if url in visited:
-        print(f"Skipping already visited URL: {url}")
+    if normalized_url in visited:
+        print(f"Skipping already visited URL: {normalized_url}")
         return
 
     # Mark the URL as visited
-    visited.add(url)
-    print(f"Visiting URL: {url}")
+    visited.add(normalized_url)
+    print(f"Visiting URL: {normalized_url}")
 
     # Send a GET request to the URL
     try:
@@ -49,13 +52,12 @@ def scrape_and_save_links(url, valid_domains, log_domains, output_file, disallow
     main_tag = soup.find('main', id='main-content')
     
     if main_tag:
-        print(f"Found <main id='main-content'> tag in URL: {url}")
+        print(f"Found <main id='main-content'> tag in URL: {normalized_url}")
         # Find all <a> tags within the specified tag
         a_tags = main_tag.find_all('a', href=True)
         
-        with open(output_file, 'a', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow([f"Links found on {url}"])
+        with open(output_file, 'a') as file:
+            file.write(f"Links found on {normalized_url}:\n")
             for a in a_tags:
                 href = a['href']
                 # Convert relative URLs to absolute URLs
@@ -64,11 +66,11 @@ def scrape_and_save_links(url, valid_domains, log_domains, output_file, disallow
                 # Log the link if it's pointing to the specified log domains, does not have a disallowed extension, and is not in disallowed paths
                 href_parsed = urlparse(href)
                 if href_parsed.netloc in log_domains and not has_disallowed_extension(href, disallowed_extensions) and not has_disallowed_path(href, disallowed_paths):
-                    writer.writerow([href])
+                    file.write(f"  {href}\n")
                     print(f"Logged link: {href}")
-            writer.writerow([])  # Blank row for separation
+            file.write("\n")  # Blank line for separation
     else:
-        print(f"No <main id='main-content'> tag found in URL: {url}")
+        print(f"No <main id='main-content'> tag found in URL: {normalized_url}")
 
     # Find all <a> tags on the page to continue crawling
     all_a_tags = soup.find_all('a', href=True)
@@ -79,8 +81,9 @@ def scrape_and_save_links(url, valid_domains, log_domains, output_file, disallow
             href = urljoin(url, href)
         # Continue crawling if the link is within the valid domains, does not have a disallowed extension, and is not in disallowed paths
         href_parsed = urlparse(href)
-        if is_valid_domain(href, valid_domains) and not has_disallowed_extension(href, disallowed_extensions) and not has_disallowed_path(href, disallowed_paths) and href not in visited:
-            scrape_and_save_links(href, valid_domains, log_domains, output_file, disallowed_extensions, disallowed_paths, visited)
+        normalized_href = href_parsed.scheme + "://" + href_parsed.netloc + href_parsed.path.rstrip('/')
+        if is_valid_domain(normalized_href, valid_domains) and not has_disallowed_extension(normalized_href, disallowed_extensions) and not has_disallowed_path(normalized_href, disallowed_paths) and normalized_href not in visited:
+            scrape_and_save_links(normalized_href, valid_domains, log_domains, output_file, disallowed_extensions, disallowed_paths, visited)
             # Sleep to prevent overloading the server
             time.sleep(1)
 
@@ -88,13 +91,16 @@ def scrape_and_save_links(url, valid_domains, log_domains, output_file, disallow
 url = 'https://www.indianastate.edu'
 valid_domains = ['www.indianastate.edu', 'indianastate.edu']
 log_domains = ['www.indstate.edu', 'indstate.edu']
-output_file = 'filtered_links.csv'
+output_file = 'filtered_links.txt'
 disallowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
-disallowed_paths = ['/profile/']
+disallowed_paths = ['/profile/', '/directory/']
 
 # Clear the output file before starting
-with open(output_file, 'w', newline='') as file:
-    writer = csv.writer(file)
-    writer.writerow(['Page URL', 'Links'])
+with open(output_file, 'w') as file:
+    file.write("")
 
+# Start scraping
 scrape_and_save_links(url, valid_domains, log_domains, output_file, disallowed_extensions, disallowed_paths)
+
+# Print completion message
+print("Crawling complete.")
